@@ -1,20 +1,33 @@
 #include "image.h"
-#include "stdio.h"
+#include <stdio.h>
+#include "time.h"
+#include <sys/time.h>
+#include <stdlib.h>
 
 void write_segment(int row_start, int row_stop, int image_size, int *host_image, int x_dimension, int y_dimension, int pid, int processors); 
 
+typedef struct 
+{
+	long tv_sec;
+	long tv_usec;
+} timeval;
 
 int main(int argc, char *argv[])
 {
 	int p = atoi(argv[1]); 
 	char *filename = argv[2];
 	
-	
 	if (p != 1 && p != 2 && p != 4 && p != 8 && p != 16 && p != 32)
 	{
 		printf("\nERROR: invalid processor count.\nMust be 1,2,4,8,16 or 32.\n");
 		exit(0);
 	}
+	
+	//	// start timer //	// 
+	struct timeval start;  
+	gettimeofday(&start, NULL);
+
+
 	printf("Processors: %d\n", p);
 	printf("Filename: %s\n", filename);
 	char *tempname;
@@ -57,7 +70,9 @@ int main(int argc, char *argv[])
 
 
 
-
+	//	// stop timer //	//
+	//gettimeofday(&end, NULL);
+	//printf("%ld\n", ((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec)));
 
 	return 0; 
 }
@@ -106,9 +121,3 @@ void write_segment(int row_start, int row_stop, int image_size, int *host_image,
        		
 	write_image_template(my_segment_filename, image_segment, x_dimension, y_dimension); 
 }
-
-
-
-
-
-
