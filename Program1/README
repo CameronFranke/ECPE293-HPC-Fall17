@@ -5,5 +5,5 @@ This program can be run with the following:
 	./ghosts <number of processors>  <Lenna_org_ file name>  
 		ex: "./ghosts 8 Lenna_org_1024.pgm"
 
-There are two critical assumptions made by that program that make it less flexible. First, the assumption is made that the images are square. This is why the "image_size" variable is used interchangably for width and height. The second is that the input image must conform to the naming scheme of the sample images provided. To reduce the need for user input the image size is parsed out of the file name. For this reason the input file must be named "Lenna_org_"<#>".pgm". While inflexible this automation reducces the need for additional user input. 
+There are two critical assumptions made by that program that make it less flexible. First, the assumption is made that the images are square. This is why the "image_size" variable is used interchangably for width and height. The second is that the input image must conform to the naming scheme of the sample images provided. To reduce the need for user input the image size is parsed out of the file name. For this reason the input file must be named "Lenna_org_"<#>".pgm". While inflexible this automation reduces the need for additional user input. 
 
