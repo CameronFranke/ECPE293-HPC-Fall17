@@ -43,8 +43,6 @@ int main(int argc, char *argv[])
     horizontal_gradient = (float *)malloc(sizeof(float)*imageX*imageY);
     vertical_gradient = (float *)malloc(sizeof(float)*imageX*imageY);
     
-    
-    
     // Horizontal Gradient
     convolve(image, imageX, imageY, gaussian, 1, width, &temp_horizontal);
     convolve(temp_horizontal, imageX, imageY, gaussian_d, width, 1, &horizontal_gradient);
@@ -61,7 +59,14 @@ int main(int argc, char *argv[])
     // stop timer //	//
     gettimeofday(&end, NULL);
     printf("Serial execution time(microseconds): %ld\n", ((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec)));
-    
+   
+	// free resources
+	free(temp_horizontal);
+	free(temp_vertical);
+	free(horizontal_gradient);
+	free(vertical_gradient);
+	free(image);
+ 
     return 0; 
 }
 
@@ -76,20 +81,19 @@ void convolve(float *source_image, int source_x, int source_y, float *filter, in
         {
             pixelTotal = 0;
             for(int w = 0; w<filter_width; w++)
-	    {
-		for(int z = 0; z<filter_height; z++)
-		{
-		    coordX = x - floor(filter_width/2) + w;
-		    coordY = y - floor(filter_height/2) + z;
+	    	{
+				for(int z = 0; z<filter_height; z++)
+				{
+		    		coordX = x - floor(filter_width/2) + w;
+		    		coordY = y - floor(filter_height/2) + z;
 		    
-		    if ((coordX < 0) || (coordX > source_x) || (coordY > source_y) || (coordY < 0))
-		    {
-		      continue; 
-		    }
-		    pixelTotal = pixelTotal + (source_image[(source_x*(coordY)) + coordX] * filter[w+z]);
-		}
-	    }
-	    (*output_image)[(source_x*y) + x] = pixelTotal;
+		    		if (((coordX >= 0) && (coordX < source_x) && (coordY < source_y) && (coordY >= 0)))
+		    		{
+		    			pixelTotal = pixelTotal + (source_image[(source_x*(coordY)) + coordX] * filter[w+z*filter_width]);
+		    		}
+				}
+	    	}
+	    	(*output_image)[(source_x*y) + x] = pixelTotal;
         }
     }
 }
