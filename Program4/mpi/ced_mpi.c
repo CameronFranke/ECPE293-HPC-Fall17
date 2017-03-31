@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <mpi.h>
+#include <unistd.h>
 #define PI 3.14159265358979323846
 
 void create_gaussian_kernels(float sigma, float **gaussian_filter,float **gaussian_d, float *w);
@@ -100,16 +101,22 @@ int main(int argc, char *argv[])
 
 	// allocate space for each procs chuck
 	chunk = (float *)malloc(sizeof(float)*(imageX*imageY/comm_size));
-
-	//scatter image
-	MPI_Scatter(image, (imageX*imageY/comm_size), MPI_FLOAT, chunk, (imageX*imageY/comm_size), MPI_FLOAT,0, MPI_COMM_WORLD);		
-	
-    /*
+    
+	// image
+	MPI_Scatter(image, (imageX*imageY/comm_size), MPI_FLOAT, chunk, (imageX*imageY/comm_size), MPI_FLOAT,0, MPI_COMM_WORLD);
+    
     //swap rows 
 	rows_to_swap = floor(width/2);
+    MPI_Barrier(MPI_COMM_WORLD);
+    
     swap_rows(comm_size, comm_rank, imageX, imageY, rows_to_swap, chunk, &my_chunk );
+    printf("ping\n");
+
     
     
+    
+    
+    /*
     //printf("%d ....%f\n", comm_rank, my_chunk[1023]);
     //printf("%d ....%f\n", comm_rank, chunk[1023]);
 
@@ -121,8 +128,7 @@ int main(int argc, char *argv[])
     
     
     //free(chunk);
-    float *test_chunk;
-    test_chunk = (float *)malloc(sizeof(float)*imageX*((imageY/comm_size) + memsize));
+    chunk = (float *)malloc(sizeof(float)*imageX*((imageY/comm_size) ));// + memsize));
     
     //printf("%d ....%f\n", comm_rank, my_chunk[1023]);
     //printf("%d ....%f\n", comm_rank, chunk[1023]);
@@ -130,29 +136,37 @@ int main(int argc, char *argv[])
     int start_row = rows_to_swap;
     if (comm_rank == 0) start_row = 0;
 	
-    convolve(my_chunk, imageX, imageY/comm_size, gaussian, 1, width, &test_chunk, 0, imageX/comm_size);
-    convolve(test_chunk, imageX, imageY, gaussian_d, width, 1, &my_chunk, start_row, imageX/comm_size);
-
-
     
-    printf("%d ....%f\n", comm_rank, my_chunk[imageX*imageY/comm_size - 1]);
-    //printf("%d ....%f\n", comm_rank, chunk[1023]);
+    //convolve(my_chunk, imageX, imageY/comm_size, gaussian, 1, width, &chunk, 0, imageX/comm_size);
     
+    float *temp = (float *)malloc(sizeof(float)*imageX*imageY/comm_size);
+    
+    //convolve(chunk, imageX, imageY, gaussian_d, width, 1, &temp, 0, imageX/comm_size);
+
+        //MPI_Barrier(MPI_COMM_WORLD);
+
+    //sleep(1);
+    //printf("A - %d ....%f\n", comm_rank, temp[0]);
+    //printf("B - %d ....%f\n", comm_rank, temp[imageX*imageY/comm_size - 1]);
+
     */
+    
     
     // gather chunks
     int cpy_start = imageX*rows_to_swap;
     if (comm_rank == 0) cpy_start = 0;
-    MPI_Barrier(MPI_COMM_WORLD);
-    MPI_Gather(chunk, (imageX*imageY/comm_size), MPI_FLOAT, horizontal_gradient, (imageX*imageY/comm_size), MPI_FLOAT, 0, MPI_COMM_WORLD);
+    
+    //printf("%d ....%f\n", comm_rank, my_chunk[0 + (imageX*imageY/comm_size) - 1]);
 
-    //printf("====================\n");
+    
+    //MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Gather(&my_chunk[cpy_start], (imageX*imageY/comm_size), MPI_FLOAT, horizontal_gradient, (imageX*imageY/comm_size), MPI_FLOAT, 0, MPI_COMM_WORLD);
+
 
     
 
     
     
-	//rintf("%d::", comm_rank);
 	
 
 	/*
@@ -188,7 +202,7 @@ int main(int argc, char *argv[])
 	//char name_hy[30] = "Hysteresis.pgm";
 	//char name_e[30] = "Edges.pgm";
 
-    write_image_template<float>(name_h, my_chunk, imageX, imageY/comm_size);
+    //write_image_template<float>(name_h, my_chunk, imageX, imageY/comm_size);
     //write_image_template<float>(name_h, horizontal_gradient, imageX, imageY);
     //write_image_template<float>(name_v, vertical_gradient, imageX, imageY);
 	//write_image_template<float>(name_m, magnitude, imageX, imageY);
@@ -454,23 +468,25 @@ void swap_rows(int comm_size, int comm_rank, int imageX, int imageY, int rows_to
 	//evens send down 
 	if(comm_rank % 2 == 0) MPI_Send(chunk_down, sizeof(float)*imageX*rows_to_swap, MPI_FLOAT, comm_rank +1, 0, MPI_COMM_WORLD);
 	else MPI_Recv(recv_up, sizeof(float)*imageX*rows_to_swap, MPI_FLOAT, comm_rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-	
+	MPI_Barrier(MPI_COMM_WORLD);
 	//odds send down
 	if(comm_rank % 2 == 1 && comm_rank != comm_size -1){
 		MPI_Send(chunk_down, sizeof(float)*imageX*rows_to_swap, MPI_FLOAT, comm_rank +1, 0, MPI_COMM_WORLD);}
+
 	else if (comm_rank % 2 == 0 && comm_rank != 0){
 		 MPI_Recv(recv_up, sizeof(float)*imageX*rows_to_swap, MPI_FLOAT, comm_rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);}
-
+    MPI_Barrier(MPI_COMM_WORLD);
+		 
 	// evens send up
 	if(comm_rank % 2 == 0 && comm_rank != 0){
 		 MPI_Send(chunk_up, sizeof(float)*imageX*rows_to_swap, MPI_FLOAT, comm_rank -1, 0, MPI_COMM_WORLD);}
 	else if (comm_rank % 2 == 1 && comm_rank != comm_size -1){
 		MPI_Recv(recv_down, sizeof(float)*imageX*rows_to_swap, MPI_FLOAT, comm_rank + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);}
-
+    MPI_Barrier(MPI_COMM_WORLD);
 	// odds send up
 	if(comm_rank % 2 == 1) MPI_Send(chunk_up, sizeof(float)*imageX*rows_to_swap, MPI_FLOAT, comm_rank -1, 0, MPI_COMM_WORLD);
 	else MPI_Recv(recv_down, sizeof(float)*imageX*rows_to_swap, MPI_FLOAT, comm_rank + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
+    MPI_Barrier(MPI_COMM_WORLD);
 	// place memory in correct location
 	if (comm_rank == 1 || comm_rank == comm_size-1) memsize = imageX*rows_to_swap;
 	if (comm_rank < comm_size - 1) memsize = imageX*rows_to_swap*2;
@@ -492,7 +508,8 @@ void swap_rows(int comm_size, int comm_rank, int imageX, int imageY, int rows_to
         memcpy( (*my_chunk) + (mem_loc ), recv_down, (sizeof(float)*imageX*rows_to_swap));
     }
     
-    
+    MPI_Barrier(MPI_COMM_WORLD);
+
 }
 
 
