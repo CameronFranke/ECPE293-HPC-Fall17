@@ -107,130 +107,113 @@ int main(int argc, char *argv[])
     
     //swap rows 
 	rows_to_swap = floor(width/2);
-    MPI_Barrier(MPI_COMM_WORLD);
     
     swap_rows(comm_size, comm_rank, imageX, imageY, rows_to_swap, chunk, &my_chunk );
-    printf("ping\n");
 
-    
-    
-    
-    
-    /*
-    //printf("%d ....%f\n", comm_rank, my_chunk[1023]);
-    //printf("%d ....%f\n", comm_rank, chunk[1023]);
-
-    
-    
     int memsize;
 	if (comm_rank == 1 || comm_rank == comm_size-1) memsize = imageX*rows_to_swap;
-	if (comm_rank < comm_size - 1) memsize = imageX*rows_to_swap*2;
+	if (comm_rank < comm_size - 1) memsize = imageX*(rows_to_swap*2);
     
-    
-    //free(chunk);
-    chunk = (float *)malloc(sizeof(float)*imageX*((imageY/comm_size) ));// + memsize));
-    
-    //printf("%d ....%f\n", comm_rank, my_chunk[1023]);
-    //printf("%d ....%f\n", comm_rank, chunk[1023]);
-    
-    int start_row = rows_to_swap;
-    if (comm_rank == 0) start_row = 0;
-	
-    
-    //convolve(my_chunk, imageX, imageY/comm_size, gaussian, 1, width, &chunk, 0, imageX/comm_size);
-    
-    float *temp = (float *)malloc(sizeof(float)*imageX*imageY/comm_size);
-    
-    //convolve(chunk, imageX, imageY, gaussian_d, width, 1, &temp, 0, imageX/comm_size);
-
-        //MPI_Barrier(MPI_COMM_WORLD);
-
-    //sleep(1);
-    //printf("A - %d ....%f\n", comm_rank, temp[0]);
-    //printf("B - %d ....%f\n", comm_rank, temp[imageX*imageY/comm_size - 1]);
-
-    */
-    
+    chunk = (float *)malloc(sizeof(float)*imageX*((imageY/comm_size) * rows_to_swap ));// + memsize));
     
     // gather chunks
-    int cpy_start = imageX*rows_to_swap;
+    int cpy_start = rows_to_swap;
     if (comm_rank == 0) cpy_start = 0;
     
-    //printf("%d ....%f\n", comm_rank, my_chunk[0 + (imageX*imageY/comm_size) - 1]);
 
-    
-    //MPI_Barrier(MPI_COMM_WORLD);
-    MPI_Gather(&my_chunk[cpy_start], (imageX*imageY/comm_size), MPI_FLOAT, horizontal_gradient, (imageX*imageY/comm_size), MPI_FLOAT, 0, MPI_COMM_WORLD);
-
-
-    
-
-    
-    
-	
-
-	/*
     // Horizontal Gradient
-    convolve(image, imageX, imageY, gaussian, 1, width, &temp_horizontal);
-    convolve(temp_horizontal, imageX, imageY, gaussian_d, width, 1, &horizontal_gradient);
+    float *h_grad = (float *)malloc(sizeof(float)*imageX*imageY/comm_size);
+    convolve(my_chunk, imageX, imageY/comm_size, gaussian, 1, width, &chunk, 0, imageX/comm_size);
+    convolve(chunk, imageX, imageY, gaussian_d, width, 1, &h_grad, 0, imageX/comm_size);
+    MPI_Gather(h_grad, (imageX*imageY/comm_size), MPI_FLOAT, horizontal_gradient, (imageX*imageY/comm_size), MPI_FLOAT, 0, MPI_COMM_WORLD);
     
-    // Vertical Gradient 
-    convolve(image, imageX, imageY, gaussian, width, 1, &temp_vertical);
-    convolve(temp_vertical, imageX, imageY, gaussian_d, 1, width, &vertical_gradient);
-
-	
     
-	// Magnitude and phase 
-	mag_and_phase(horizontal_gradient, vertical_gradient, imageX, imageY, &magnitude, &phase);
+    // Vertical Gradient
+    chunk = (float *)malloc(sizeof(float)*imageX*((imageY/comm_size) * rows_to_swap ));
+    float *v_grad = (float *)malloc(sizeof(float)*imageX*imageY/comm_size* rows_to_swap);
+    
+    convolve(my_chunk, imageX, imageY/comm_size + 2+(2*rows_to_swap), gaussian, width, 1, &chunk, 0, imageX/comm_size + 2 +(2*rows_to_swap));
+    convolve(chunk, imageX, imageY/comm_size + 2 + (2*rows_to_swap), gaussian_d, 1, width, &v_grad, 0, imageX/comm_size + 2 + (2*rows_to_swap));
+    
+    MPI_Gather(&(v_grad[imageX*cpy_start]), (imageX*imageY/comm_size), MPI_FLOAT, vertical_gradient, (imageX*imageY/comm_size), MPI_FLOAT, 0, MPI_COMM_WORLD);
+    
+    
+    
+    v_grad = (float *)malloc(sizeof(float)*imageX*imageY/comm_size);
+    h_grad = (float *)malloc(sizeof(float)*imageX*imageY/comm_size);
+    MPI_Scatter(vertical_gradient, (imageX*imageY/comm_size), MPI_FLOAT, v_grad, (imageX*imageY/comm_size), MPI_FLOAT,0, MPI_COMM_WORLD);
+    MPI_Scatter(horizontal_gradient, (imageX*imageY/comm_size), MPI_FLOAT, h_grad, (imageX*imageY/comm_size), MPI_FLOAT,0, MPI_COMM_WORLD);
+    
+    
+    // Magnitude and phase 
+    float *my_mag = (float *)malloc(sizeof(float)*imageX*imageY/comm_size);
+    float *my_phase = (float *)malloc(sizeof(float)*imageX*imageY/comm_size);
+    mag_and_phase(h_grad, v_grad, imageX, imageY/comm_size, &my_mag, &my_phase);
+    MPI_Gather(my_mag, (imageX*imageY/comm_size), MPI_FLOAT, magnitude, (imageX*imageY/comm_size), MPI_FLOAT, 0, MPI_COMM_WORLD);    
+    MPI_Gather(my_phase, (imageX*imageY/comm_size), MPI_FLOAT, phase, (imageX*imageY/comm_size), MPI_FLOAT, 0, MPI_COMM_WORLD);
 
+    
 	// Suppression 
-	suipression(magnitude, phase, &suppressed, imageX, imageY);
-	
+    float *my_supp = (float *)malloc(sizeof(float)*imageX*imageY/comm_size);
+	suppression(my_mag, my_phase, &my_supp, imageX, imageY/comm_size);
+	MPI_Gather(my_supp, (imageX*imageY/comm_size), MPI_FLOAT, suppressed, (imageX*imageY/comm_size), MPI_FLOAT, 0, MPI_COMM_WORLD);
+    
+    
 	// Hysteresis
-	hysteresis(suppressed, &hyst, imageX, imageY);
-
+    float *my_hyst = (float *)malloc(sizeof(float)*imageX*imageY/comm_size);
+	hysteresis(my_supp, &my_hyst, imageX, imageY/comm_size);
+    MPI_Gather(my_hyst, (imageX*imageY/comm_size), MPI_FLOAT, hyst, (imageX*imageY/comm_size), MPI_FLOAT, 0, MPI_COMM_WORLD);
+    
+    
+    
+    // need to swap row because edges used neighbors
+    float *my_new_hyst = (float *)malloc(sizeof(float)*imageX*(imageY/comm_size + 2));
+    float *my_edges = (float *)malloc(sizeof(float)*imageX*(imageY/comm_size + 2));
+    swap_rows(comm_size, comm_rank, imageX, imageY, 1, my_hyst, &my_new_hyst);
+    
+    
 	// Edges
-	finalize_edges(&edges, hyst, imageX, imageY); 
-    */
+	finalize_edges(&my_edges, my_new_hyst, imageX, imageY/comm_size + 2); 
+    MPI_Gather(&(my_edges[imageX]), (imageX*imageY/comm_size), MPI_FLOAT, edges, (imageX*imageY/comm_size), MPI_FLOAT, 0, MPI_COMM_WORLD);
+    
     
 	if (comm_rank == 0){
     char name_h[30] = "Horizontal_gradient.pgm";
-    //char name_v[30] = "Vertical_gradient.pgm";
-	//char name_m[30] = "Magnitude.pgm";
-	//char name_ph[30] = "Phase.pgm";
-	//char name_s[30] = "Suppressed.pgm";
-	//char name_hy[30] = "Hysteresis.pgm";
-	//char name_e[30] = "Edges.pgm";
+    char name_v[30] = "Vertical_gradient.pgm";
+	char name_m[30] = "Magnitude.pgm";
+	char name_ph[30] = "Phase.pgm";
+	char name_s[30] = "Suppressed.pgm";
+	char name_hy[30] = "Hysteresis.pgm";
+	char name_e[30] = "Edges.pgm";
 
-    //write_image_template<float>(name_h, my_chunk, imageX, imageY/comm_size);
-    //write_image_template<float>(name_h, horizontal_gradient, imageX, imageY);
-    //write_image_template<float>(name_v, vertical_gradient, imageX, imageY);
-	//write_image_template<float>(name_m, magnitude, imageX, imageY);
-	//write_image_template<float>(name_ph, phase, imageX, imageY);
-	//write_image_template<float>(name_s, suppressed, imageX, imageY);	   
-	//write_image_template<float>(name_hy, hyst, imageX, imageY);
-	//write_image_template<float>(name_e, edges, imageX, imageY);
+    
+    write_image_template<float>(name_h, horizontal_gradient, imageX, imageY);
+    write_image_template<float>(name_v, vertical_gradient, imageX, imageY);
+	write_image_template<float>(name_m, magnitude, imageX, imageY);
+	write_image_template<float>(name_ph, phase, imageX, imageY);
+	write_image_template<float>(name_s, suppressed, imageX, imageY);	   
+	write_image_template<float>(name_hy, hyst, imageX, imageY);
+	write_image_template<float>(name_e, edges, imageX, imageY);
 	}
-		
+
 
     // stop timer //	//		// need to syn before time stops 
    	if (comm_rank == 0)
 	{
 		gettimeofday(&end, NULL);
-   	 	printf("Serial execution time(microseconds): %ld\n", ((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec)));
-	}   
+        printf("Serial execution time(microseconds): %ld\n", ((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec)));
 
-	// free resources
-	//free(temp_horizontal);
-	//free(temp_vertical);
-	//free(horizontal_gradient);
-	//free(vertical_gradient);
-	//free(image);
-	//free(phase);
-	//free(magnitude);
-	//free(edges);
-	//free(hyst);
-		
+        //free resources
+        free(temp_horizontal);
+        free(temp_vertical);
+        free(horizontal_gradient);
+        free(vertical_gradient);
+        free(image);
+        free(phase);
+        free(magnitude);
+        free(edges);
+        free(hyst);
+    } 
 	MPI_Finalize();
     
     return 0; 
@@ -466,32 +449,35 @@ void swap_rows(int comm_size, int comm_rank, int imageX, int imageY, int rows_to
 	}
 	
 	//evens send down 
-	if(comm_rank % 2 == 0) MPI_Send(chunk_down, sizeof(float)*imageX*rows_to_swap, MPI_FLOAT, comm_rank +1, 0, MPI_COMM_WORLD);
-	else MPI_Recv(recv_up, sizeof(float)*imageX*rows_to_swap, MPI_FLOAT, comm_rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-	MPI_Barrier(MPI_COMM_WORLD);
-	//odds send down
-	if(comm_rank % 2 == 1 && comm_rank != comm_size -1){
-		MPI_Send(chunk_down, sizeof(float)*imageX*rows_to_swap, MPI_FLOAT, comm_rank +1, 0, MPI_COMM_WORLD);}
+	if(comm_rank % 2 == 0) MPI_Send(chunk_down, imageX*rows_to_swap, MPI_FLOAT, comm_rank +1, 0, MPI_COMM_WORLD);
+	else MPI_Recv(recv_up, imageX*rows_to_swap, MPI_FLOAT, comm_rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
+    //odds send down
+	if(comm_rank % 2 == 1 && comm_rank != comm_size -1){
+		MPI_Send(chunk_down, imageX*rows_to_swap, MPI_FLOAT, comm_rank +1, 0, MPI_COMM_WORLD);}
+    
 	else if (comm_rank % 2 == 0 && comm_rank != 0){
-		 MPI_Recv(recv_up, sizeof(float)*imageX*rows_to_swap, MPI_FLOAT, comm_rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);}
-    MPI_Barrier(MPI_COMM_WORLD);
-		 
+		 MPI_Recv(recv_up, imageX*rows_to_swap, MPI_FLOAT, comm_rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);}
+
 	// evens send up
 	if(comm_rank % 2 == 0 && comm_rank != 0){
-		 MPI_Send(chunk_up, sizeof(float)*imageX*rows_to_swap, MPI_FLOAT, comm_rank -1, 0, MPI_COMM_WORLD);}
+		 MPI_Send(chunk_up, imageX*rows_to_swap, MPI_FLOAT, comm_rank -1, 0, MPI_COMM_WORLD);}
 	else if (comm_rank % 2 == 1 && comm_rank != comm_size -1){
-		MPI_Recv(recv_down, sizeof(float)*imageX*rows_to_swap, MPI_FLOAT, comm_rank + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);}
-    MPI_Barrier(MPI_COMM_WORLD);
-	// odds send up
-	if(comm_rank % 2 == 1) MPI_Send(chunk_up, sizeof(float)*imageX*rows_to_swap, MPI_FLOAT, comm_rank -1, 0, MPI_COMM_WORLD);
-	else MPI_Recv(recv_down, sizeof(float)*imageX*rows_to_swap, MPI_FLOAT, comm_rank + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    MPI_Barrier(MPI_COMM_WORLD);
+		MPI_Recv(recv_down, imageX*rows_to_swap, MPI_FLOAT, comm_rank + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);}
+
+    // odds send up
+	if(comm_rank % 2 == 1) MPI_Send(chunk_up, imageX*rows_to_swap, MPI_FLOAT, comm_rank -1, 0, MPI_COMM_WORLD);
+	else MPI_Recv(recv_down, imageX*rows_to_swap, MPI_FLOAT, comm_rank + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        
 	// place memory in correct location
 	if (comm_rank == 1 || comm_rank == comm_size-1) memsize = imageX*rows_to_swap;
-	if (comm_rank < comm_size - 1) memsize = imageX*rows_to_swap*2;
+	else memsize = imageX*rows_to_swap*2;
     
 	(*my_chunk) = (float *)malloc(sizeof(float)*imageX*((imageY/comm_size) + memsize));
+    
+    
+    
+    
     
 	mem_loc = 0;
 	if (comm_rank > 0)
@@ -505,7 +491,7 @@ void swap_rows(int comm_size, int comm_rank, int imageX, int imageY, int rows_to
     
     if (comm_rank != comm_size-1)
     {
-        memcpy( (*my_chunk) + (mem_loc ), recv_down, (sizeof(float)*imageX*rows_to_swap));
+        memcpy( (*my_chunk) + mem_loc, recv_down, (sizeof(float)*imageX*rows_to_swap));
     }
     
     MPI_Barrier(MPI_COMM_WORLD);
