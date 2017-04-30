@@ -1,166 +1,109 @@
-#include<stdio.h>
-#include<stdlib.h>
+#include<opencv2/highgui/highgui.hpp>
+#include<opencv2/core/core.hpp>
+#include "opencv2/imgproc/imgproc.hpp"
+#include <iostream>
+#include <fstream>
+#include <string>
+using namespace cv;
 
-typedef struct {
-     unsigned char red,green,blue;
-} PPMPixel;
+void augmentFrames(std::string filename, float label, std::ofstream &outfile);
 
-typedef struct {
-     int x, y;
-     PPMPixel *data;
-} PPMImage;
-
-#define CREATOR "RPFELGUEIRAS"
-#define RGB_COMPONENT_COLOR 255
-
-static PPMImage *readPPM(const char *filename)
+int main()
 {
-         char buff[16];
-         PPMImage *img;
-         FILE *fp;
-         int c, rgb_comp_color;
-         //open PPM file for reading
-         fp = fopen(filename, "rb");
-         if (!fp) {
-              fprintf(stderr, "Unable to open file '%s'\n", filename);
-              exit(1);
-         }
-
-         //read image format
-         if (!fgets(buff, sizeof(buff), fp)) {
-              perror(filename);
-              exit(1);
-         }
-
-    //check the image format
-    if (buff[0] != 'P' || buff[1] != '6') {
-         fprintf(stderr, "Invalid image format (must be 'P6')\n");
-         exit(1);
-    }
-
-    //alloc memory form image
-    img = (PPMImage *)malloc(sizeof(PPMImage));
-    if (!img) {
-         fprintf(stderr, "Unable to allocate memory\n");
-         exit(1);
-    }
-
-    //check for comments
-    c = getc(fp);
-    while (c == '#') {
-    while (getc(fp) != '\n') ;
-         c = getc(fp);
-    }
-
-    ungetc(c, fp);
-    //read image size information
-    if (fscanf(fp, "%d %d", &img->x, &img->y) != 2) {
-         fprintf(stderr, "Invalid image size (error loading '%s')\n", filename);
-         exit(1);
-    }
-
-    //read rgb component
-    if (fscanf(fp, "%d", &rgb_comp_color) != 1) {
-         fprintf(stderr, "Invalid rgb component (error loading '%s')\n", filename);
-         exit(1);
-    }
-
-    //check rgb component depth
-    if (rgb_comp_color!= RGB_COMPONENT_COLOR) {
-         fprintf(stderr, "'%s' does not have 8-bits components\n", filename);
-         exit(1);
-    }
-
-    while (fgetc(fp) != '\n') ;
-    //memory allocation for pixel data
-    img->data = (PPMPixel*)malloc(img->x * img->y * sizeof(PPMPixel));
-
-    if (!img) {
-         fprintf(stderr, "Unable to allocate memory\n");
-         exit(1);
-    }
-
-    //read pixel data from file
-    if (fread(img->data, 3 * img->x, img->y, fp) != img->y) {
-         fprintf(stderr, "Error loading image '%s'\n", filename);
-         exit(1);
-    }
     
-    fclose(fp);
-    return img;
+    std::ifstream inLabels; 
+    std::string data, filename, labelstr;
+    std::ofstream outfile ("Results/labels.txt",  std::ofstream::out);
+    float label;
+    inLabels.open("Set_125_offset_v/labels.txt");
+    
+    do{
+	//read in and parse labels 
+     	inLabels >> data;
+	filename = data.substr(0,data.find(":"));
+	std::cout << filename << "     ";
+
+	// intermidiate parse step 
+	labelstr = data.substr(data.find(":")+1, data.find(","));
+	labelstr = labelstr.substr(0, labelstr.find(","));
+	label = stof(labelstr);
+
+	std::cout << label << "\n";
+	
+	//function call to augment data
+	augmentFrames(filename, label, outfile);
+
+    }while(!inLabels.eof());
+
+    outfile.close(); 
+    return 0;
 }
-void writePPM(const char *filename, PPMImage *img)
+
+
+void augmentFrames(std::string filename, float label, std::ofstream &outfile)
 {
-    FILE *fp;
-    //open file for output
-    fp = fopen(filename, "wb");
-    if (!fp) {
-         fprintf(stderr, "Unable to open file '%s'\n", filename);
-         exit(1);
-    }
-
-    //write the header file
-    //image format
-    fprintf(fp, "P6\n");
-
-    //comments
-    fprintf(fp, "# Created by %s\n",CREATOR);
-
-    //image size
-    fprintf(fp, "%d %d\n",img->x,img->y);
-
-    // rgb component depth
-    fprintf(fp, "%d\n",RGB_COMPONENT_COLOR);
-
-    // pixel data
-    fwrite(img->data, 3 * img->x, img->y, fp);
-    fclose(fp);
-}
-
-void changeColorPPM(PPMImage *img)
-{
-    int i;
-    if(img){
-
-         for(i=0;i<img->x*img->y;i++){
-              img->data[i].red=RGB_COMPONENT_COLOR-img->data[i].red;
-              img->data[i].green=RGB_COMPONENT_COLOR-img->data[i].green;
-              img->data[i].blue=RGB_COMPONENT_COLOR-img->data[i].blue;
-         }
-    }
-}
-
-static PPMImage *mirror(PPMImage *img){
-    printf("image height: %d\n", img->y);
-    printf("image width: %d\n", img->x);
+    int dst_width=320, dst_height=180, warp_factor=20;
+    float mirrored_label, lw1, rw1;
+    std::string filedir; 
     
-    PPMPixel temp;
-    for(int i = 0; i < img->y; i++){
-        for( int j = 0; j<img->x/2; j++){
-            
-            temp = img->data[i*img->x + j];
-            img->data[i*img->x + j] = img->data[i*img->x + img->x -1 -j];
-            img->data[i*img->x + img->x -1 -j] = temp;
-            
-        }
-    }
-    return img;
+    if (outfile == NULL)
+	    std::cout << "error\n";
+
+    filedir = "Set_125_offset_v/Frame_" + filename + ".jpg";
+    Mat img = imread(filedir,CV_LOAD_IMAGE_COLOR);
+    
+    Mat mirrored;
+    Size mySize = Size(dst_width, dst_height);
+    resize(img, img, mySize);
+
+    flip(img, mirrored, 1);
+    std::cout << "flipped label: " << label * -1 << "\n";
+
+    imwrite("Results/Frame_" + filename  + "_2.jpg", mirrored);
+  
+    Rect crop(0, warp_factor, dst_width, dst_height-warp_factor*2);
+    Point2f pts1[4], pts2[4];
+
+    pts1[0] = Point2f(0, 0);
+    pts1[1] = Point2f(320, 0);
+    pts1[2] = Point2f(0, dst_height);
+    pts1[3] = Point2f(320, dst_height);
+
+    pts2[0] = Point2f(0, warp_factor);
+    pts2[1] = Point2f(320, 0);
+    pts2[2] = Point2f(0, dst_height-warp_factor);
+    pts2[3] = Point2f(320, dst_height);
+
+    Mat Transform = getPerspectiveTransform(pts1, pts2);
+    Mat warped1, warped2;
+    warpPerspective(img, warped1, Transform, mySize);
+    warped1 = warped1(crop);
+    resize(warped1, warped1, mySize);
+    imwrite("Results/Frame_" + filename  + "_0.jpg", warped1);
+
+
+    pts2[0] = Point2f(0, 0);
+    pts2[1] = Point2f(320, warp_factor);
+    pts2[2] = Point2f(0, dst_height);
+    pts2[3] = Point2f(320, dst_height-warp_factor);
+
+    Transform = getPerspectiveTransform(pts1, pts2);
+    warpPerspective(img, warped2, Transform, mySize);
+    warped2 = warped2(crop);
+    resize(warped2, warped2, mySize);
+    imwrite("Results/Frame_" + filename + "_1.jpg", warped2);
+
+    lw1 = label + (warp_factor*.01);
+    rw1 = label - (warp_factor*.01);
+
+    std::cout << "label: " << label << "\n";
+    std::cout << "left warp label: " << lw1 << "\n";
+    std::cout << "right warp label: " << rw1 << "\n";
+
+    // write label to file
+    outfile << filename + "_0:" + std::to_string(lw1) + "\n";
+    outfile << filename + "_1:" + std::to_string(rw1) + "\n";
+    outfile << filename + "_2:" + std::to_string(label*-1) + "\n";
 }
-
-int main(int argc, char *argv[]){
-    PPMImage *image;
-    image = readPPM("rick-and-morty.ppm");
-    writePPM("wubalubadubdub.ppm",image);
-    
-    image = mirror(image);
-    writePPM("Mirrored_wub.ppm", image);
-    
-    
-    printf("Press any key...");
-    getchar();
-}
-
-
-
 
 
